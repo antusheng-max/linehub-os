@@ -35,3 +35,5 @@ credentials/
 .idea/
 .coverage
 coverage/
+__pycache__/
+*.py[cod]

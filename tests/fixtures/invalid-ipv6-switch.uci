@@ -1,0 +1,6 @@
+config pppoe 'wan_invalid_ipv6'
+	option wan_id 'wan-invalid-ipv6'
+	option username 'fixture@example.invalid'
+	option ipv4 '1'
+	option ipv6 '2'
+	option weight '1'

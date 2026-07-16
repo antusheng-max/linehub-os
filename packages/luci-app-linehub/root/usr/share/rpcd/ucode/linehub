@@ -1,0 +1,59 @@
+'use strict';
+
+import { popen, error } from 'fs';
+
+function unavailable(message) {
+	return {
+		valid: false,
+		counts: {
+			device: 0,
+			vlan: 0,
+			pppoe: 0,
+			pool: 0,
+			policy: 0
+		},
+		errors: [{
+			code: 'linehub.validator.unavailable',
+			section: '-',
+			option: '-',
+			message
+		}]
+	};
+}
+
+function run_validator() {
+	let handle = popen('/usr/sbin/linehub-validate --json /etc/config/linehub 2>/dev/null', 'r');
+	if (!handle)
+		return unavailable(error() ?? 'Unable to start linehub-validate');
+
+	let output = handle.read('all');
+	handle.close();
+	if (!length(trim(output ?? '')))
+		return unavailable('linehub-validate returned empty output');
+
+	try {
+		let result = json(output);
+		if (type(result) == 'object' && type(result.counts) == 'object' && type(result.errors) == 'array')
+			return result;
+	}
+	catch (exception) {
+		return unavailable('linehub-validate returned invalid JSON');
+	}
+
+	return unavailable('linehub-validate returned an invalid result');
+}
+
+const methods = {
+	overview: {
+		call: function() {
+			return run_validator();
+		}
+	},
+	validate: {
+		call: function() {
+			return run_validator();
+		}
+	}
+};
+
+return { linehub: methods };

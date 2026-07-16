@@ -1,0 +1,8 @@
+config pppoe 'wan_missing_id'
+	option vlan 'wan_vlan_101'
+	option username 'fixture@example.invalid'
+	option macaddr '02:00:00:00:02:01'
+	option ipv4 '1'
+	option ipv6 '1'
+	option weight '1'
+	option healthcheck 'internet_icmp'

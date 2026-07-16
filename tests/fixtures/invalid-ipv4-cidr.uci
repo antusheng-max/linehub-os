@@ -1,0 +1,3 @@
+config lan 'main'
+	option ipv4_cidr '192.0.2.999/33'
+	option ula_prefix 'fd42:4c69:6e65::/48'

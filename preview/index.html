@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="LineHub OS 企业软路由管理控制台本地交互预览">
+  <title>LineHub OS · 管理控制台</title>
+  <link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="主导航">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">LH</span>
+        <div class="brand-copy">
+          <strong>LineHub OS</strong>
+          <span>Enterprise Gateway</span>
+        </div>
+        <button class="sidebar-collapse" id="sidebar-collapse" type="button" aria-label="折叠侧栏">‹</button>
+      </div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+      <div class="sidebar-footer">
+        <span class="pulse-dot"></span>
+        <div>
+          <strong>本地演示模式</strong>
+          <span>模拟配置 · 无真实网络操作</span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu" id="mobile-menu" type="button" aria-label="打开导航">☰</button>
+          <div class="breadcrumb" id="breadcrumb">系统概况 / 运行概况</div>
+        </div>
+        <div class="topbar-metrics" aria-label="系统快捷状态">
+          <span class="top-time" id="current-time">--:--:--</span>
+          <span><i class="mini-meter"><b id="cpu-meter"></b></i>CPU <strong id="top-cpu">--%</strong></span>
+          <span><i class="mini-meter memory"><b id="memory-meter"></b></i>内存 <strong id="top-memory">--%</strong></span>
+          <span class="bandwidth"><i class="traffic-up">↑</i><strong id="top-up">--</strong><i class="traffic-down">↓</i><strong id="top-down">--</strong></span>
+          <button class="alarm-button" id="alarm-button" type="button" aria-label="查看告警">
+            <span aria-hidden="true">!</span>
+            告警 <b id="alarm-count">0</b>
+          </button>
+          <button class="reset-demo-button" id="reset-demo-button" type="button">恢复演示数据</button>
+          <button class="admin-button" id="admin-button" type="button" aria-expanded="false">
+            <span class="avatar">A</span> admin <span aria-hidden="true">⌄</span>
+          </button>
+          <div class="admin-menu" id="admin-menu" hidden>
+            <button type="button" data-admin-action="profile">管理员设置</button>
+            <button type="button" data-admin-action="first-run">恢复首次配置状态</button>
+            <button type="button" data-admin-action="about">关于 LineHub OS</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="page" id="page-view" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <div class="mobile-backdrop" id="mobile-backdrop" hidden></div>
+
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="编辑面板" aria-hidden="true">
+    <header class="drawer-header">
+      <div>
+        <span class="drawer-kicker" id="drawer-kicker">LINEHUB CONFIGURATION</span>
+        <h2 id="drawer-title">配置</h2>
+      </div>
+      <button class="icon-button" id="drawer-close" type="button" aria-label="关闭编辑面板">×</button>
+    </header>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+
+  <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <div class="confirm-icon" aria-hidden="true">!</div>
+      <h2 id="confirm-title">确认操作</h2>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions">
+        <button class="button" value="cancel">取消</button>
+        <button class="button danger" id="confirm-submit" value="confirm">确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

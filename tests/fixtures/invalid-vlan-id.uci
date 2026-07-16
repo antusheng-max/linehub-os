@@ -1,0 +1,12 @@
+config device 'eth0'
+	option ifname 'eth0'
+
+config vlan 'below_range'
+	option device 'eth0'
+	option vid '0'
+	option ifname 'eth0.0'
+
+config vlan 'above_range'
+	option device 'eth0'
+	option vid '4095'
+	option ifname 'eth0.4095'

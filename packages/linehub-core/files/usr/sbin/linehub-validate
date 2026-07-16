@@ -1,0 +1,409 @@
+#!/bin/sh
+# LineHub's single runtime UCI validator. It is offline-only and never changes network state.
+set -eu
+
+mode='human'
+config='/etc/config/linehub'
+config_set=0
+
+usage() {
+	printf '%s\n' \
+		'Usage: linehub-validate [--json | --redacted] [UCI_FILE]' \
+		'' \
+		'Validate a LineHub UCI configuration without applying it. --redacted emits' \
+		'the input configuration with every option named "password" masked.'
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--json)
+			[ "$mode" = 'human' ] || { printf '%s\n' 'linehub-validate: choose only one output mode' >&2; exit 2; }
+			mode='json'
+			;;
+		--redacted)
+			[ "$mode" = 'human' ] || { printf '%s\n' 'linehub-validate: choose only one output mode' >&2; exit 2; }
+			mode='redacted'
+			;;
+		--help|-h)
+			usage
+			exit 0
+			;;
+		--*)
+			printf 'linehub-validate: unknown option: %s\n' "$1" >&2
+			exit 2
+			;;
+		*)
+			[ "$config_set" -eq 0 ] || { printf '%s\n' 'linehub-validate: too many configuration paths' >&2; exit 2; }
+			config=$1
+			config_set=1
+			;;
+	esac
+	shift
+done
+
+[ -r "$config" ] || { printf 'linehub-validate: cannot read configuration: %s\n' "$config" >&2; exit 2; }
+
+awk -v output_mode="$mode" '
+function trim(value) {
+	sub(/^[ \t\r\n]+/, "", value)
+	sub(/[ \t\r\n]+$/, "", value)
+	return value
+}
+
+function read_token(value, quote, position) {
+	value = trim(value)
+	if (value == "")
+		return ""
+
+	quote = substr(value, 1, 1)
+	if (quote == "\047" || quote == "\"") {
+		value = substr(value, 2)
+		position = index(value, quote)
+		if (!position) {
+			parse_failed = 1
+			return value
+		}
+		return substr(value, 1, position - 1)
+	}
+
+	position = match(value, /[ \t]/)
+	return position ? substr(value, 1, position - 1) : value
+}
+
+function drop_token(value, quote, position) {
+	value = trim(value)
+	if (value == "")
+		return ""
+
+	quote = substr(value, 1, 1)
+	if (quote == "\047" || quote == "\"") {
+		value = substr(value, 2)
+		position = index(value, quote)
+		if (!position) {
+			parse_failed = 1
+			return ""
+		}
+		return trim(substr(value, position + 1))
+	}
+
+	position = match(value, /[ \t]/)
+	return position ? trim(substr(value, position + 1)) : ""
+}
+
+function redact_line(value, content, indentation) {
+	content = value
+	sub(/^[ \t]*/, "", content)
+	if (content ~ /^option[ \t]+password([ \t]|$)/) {
+		indentation = value
+		sub(/[^ \t].*$/, "", indentation)
+		return indentation "option password \047********\047"
+	}
+	return value
+}
+
+function add_error(code, section, option_name, message) {
+	error_count++
+	error_code[error_count] = code
+	error_section[error_count] = section
+	error_option[error_count] = option_name
+	error_message[error_count] = message
+}
+
+function option_value(idx, name) {
+	return options[idx SUBSEP name]
+}
+
+function has_option(idx, name) {
+	return option_present[idx SUBSEP name]
+}
+
+function uint_in_range(value, minimum, maximum) {
+	return value ~ /^[0-9]+$/ && (value + 0) >= minimum && (value + 0) <= maximum
+}
+
+function valid_mac(value, octets, count, idx) {
+	count = split(value, octets, ":")
+	if (count != 6)
+		return 0
+	for (idx = 1; idx <= count; idx++)
+		if (octets[idx] !~ /^[0-9a-fA-F][0-9a-fA-F]$/)
+			return 0
+	return 1
+}
+
+function valid_switch(value) {
+	return value == "0" || value == "1"
+}
+
+function valid_ipv4_cidr(value, cidr, octets, count, idx, octet) {
+	if (split(value, cidr, "/") != 2 || !uint_in_range(cidr[2], 0, 32))
+		return 0
+	if (split(cidr[1], octets, ".") != 4)
+		return 0
+	for (idx = 1; idx <= 4; idx++) {
+		octet = octets[idx]
+		if (octet !~ /^[0-9]+$/ || (length(octet) > 1 && substr(octet, 1, 1) == "0") || (octet + 0) > 255)
+			return 0
+	}
+	return 1
+}
+
+function valid_ula_prefix(value, cidr, address, first, remainder, compressions, position, groups, count, idx, group, nonempty) {
+	value = tolower(value)
+	if (split(value, cidr, "/") != 2 || !uint_in_range(cidr[2], 7, 128))
+		return 0
+
+	address = cidr[1]
+	if (address !~ /^[0-9a-f:]+$/ || index(address, ":::") > 0)
+		return 0
+
+	first = address
+	sub(/:.*/, "", first)
+	if (first !~ /^(fc|fd)[0-9a-f][0-9a-f]$/)
+		return 0
+
+	remainder = address
+	compressions = 0
+	while ((position = index(remainder, "::")) > 0) {
+		compressions++
+		remainder = substr(remainder, position + 2)
+	}
+	if (compressions > 1)
+		return 0
+
+	count = split(address, groups, ":")
+	nonempty = 0
+	for (idx = 1; idx <= count; idx++) {
+		group = groups[idx]
+		if (group == "") {
+			if (!compressions)
+				return 0
+			continue
+		}
+		if (group !~ /^[0-9a-f]+$/ || length(group) > 4)
+			return 0
+		nonempty++
+	}
+
+	return compressions ? nonempty < 8 : nonempty == 8
+}
+
+function json_escape(value, result, idx, character) {
+	result = ""
+	for (idx = 1; idx <= length(value); idx++) {
+		character = substr(value, idx, 1)
+		if (character == "\\")
+			result = result "\\\\"
+		else if (character == "\"")
+			result = result "\\\""
+		else if (character == "\t")
+			result = result "\\t"
+		else if (character == "\r")
+			result = result "\\r"
+		else if (character == "\n")
+			result = result "\\n"
+		else
+			result = result character
+	}
+	return result
+}
+
+{
+	raw_line = $0
+	sub(/\r$/, "", raw_line)
+	redacted_line[NR] = redact_line(raw_line)
+
+	line = trim(raw_line)
+	if (line == "" || substr(line, 1, 1) == "#")
+		next
+
+	directive = read_token(line)
+	rest = drop_token(line)
+
+	if (directive == "config") {
+		section_type = read_token(rest)
+		rest = drop_token(rest)
+		section_name = read_token(rest)
+		if (section_type == "") {
+			add_error("uci.syntax.invalid", "-", "-", "config requires a section type")
+			parse_failed = 1
+			next
+		}
+		section_count++
+		if (section_name == "") {
+			anonymous_count[section_type]++
+			section_name = "@" section_type "[" (anonymous_count[section_type] - 1) "]"
+		}
+		section_types[section_count] = section_type
+		section_names[section_count] = section_name
+		current_section = section_count
+		next
+	}
+
+	if (directive == "option" || directive == "list") {
+		if (!current_section) {
+			add_error("uci.syntax.invalid", "-", "-", directive " appears before any config section")
+			parse_failed = 1
+			next
+		}
+
+		key = read_token(rest)
+		rest = drop_token(rest)
+		if (key == "" || rest == "") {
+			add_error("uci.syntax.invalid", section_names[current_section], "-", directive " requires a key and value")
+			parse_failed = 1
+			next
+		}
+		value = read_token(rest)
+		if (directive == "option") {
+			options[current_section SUBSEP key] = value
+			option_present[current_section SUBSEP key] = 1
+		}
+		else {
+			list_counts[current_section SUBSEP key]++
+			list_values[current_section SUBSEP key SUBSEP list_counts[current_section SUBSEP key]] = value
+		}
+		next
+	}
+
+	add_error("uci.syntax.invalid", current_section ? section_names[current_section] : "-", "-", "unsupported UCI directive")
+	parse_failed = 1
+}
+
+END {
+	if (parse_failed)
+		add_error("uci.syntax.invalid", "-", "-", "UCI input contains an invalid or unterminated token")
+
+	for (idx = 1; idx <= section_count; idx++) {
+		type = section_types[idx]
+		name = section_names[idx]
+		type_counts[type]++
+		if (type == "device")
+			devices[name] = 1
+		else if (type == "vlan")
+			vlans[name] = 1
+		else if (type == "healthcheck")
+			healthchecks[name] = 1
+		else if (type == "pool")
+			pools[name] = 1
+	}
+
+	for (idx = 1; idx <= section_count; idx++) {
+		if (section_types[idx] != "pppoe")
+			continue
+
+		name = section_names[idx]
+		wan_id = trim(option_value(idx, "wan_id"))
+		if (wan_id == "")
+			add_error("pppoe.wan_id.required", name, "wan_id", "pppoe.wan_id is required")
+		else if (wan_ids[wan_id])
+			add_error("pppoe.wan_id.duplicate", name, "wan_id", "pppoe.wan_id must be unique")
+		else
+			wan_ids[wan_id] = 1
+
+		mac = trim(option_value(idx, "macaddr"))
+		if (mac != "") {
+			if (!valid_mac(mac))
+				add_error("pppoe.macaddr.invalid", name, "macaddr", "pppoe.macaddr must use six hexadecimal octets")
+			else if (macs[tolower(mac)])
+				add_error("pppoe.macaddr.duplicate", name, "macaddr", "pppoe.macaddr must be unique")
+			else
+				macs[tolower(mac)] = 1
+		}
+	}
+
+	for (idx = 1; idx <= section_count; idx++) {
+		type = section_types[idx]
+		name = section_names[idx]
+
+		if (type == "device") {
+			if (trim(option_value(idx, "ifname")) == "")
+				add_error("device.ifname.required", name, "ifname", "device.ifname is required")
+		}
+		else if (type == "vlan") {
+			if (!uint_in_range(option_value(idx, "vid"), 1, 4094))
+				add_error("vlan.vid.range", name, "vid", "vlan.vid must be an integer from 1 through 4094")
+
+			ifname = trim(option_value(idx, "ifname"))
+			if (ifname == "")
+				add_error("vlan.ifname.required", name, "ifname", "vlan.ifname is required")
+			else if (vlan_ifnames[ifname])
+				add_error("vlan.ifname.duplicate", name, "ifname", "vlan.ifname must be unique")
+			else
+				vlan_ifnames[ifname] = 1
+
+			device = trim(option_value(idx, "device"))
+			if (device == "" || !devices[device])
+				add_error("reference.vlan.device", name, "device", "vlan.device must reference an existing device section")
+		}
+		else if (type == "pppoe") {
+			if (trim(option_value(idx, "username")) == "")
+				add_error("pppoe.username.required", name, "username", "pppoe.username is required")
+			if (!uint_in_range(option_value(idx, "weight"), 1, 100))
+				add_error("pppoe.weight.invalid", name, "weight", "pppoe.weight must be an integer from 1 through 100")
+			if (!valid_switch(option_value(idx, "ipv4")))
+				add_error("pppoe.ipv4.invalid", name, "ipv4", "pppoe.ipv4 must be 0 or 1")
+			if (!valid_switch(option_value(idx, "ipv6")))
+				add_error("pppoe.ipv6.invalid", name, "ipv6", "pppoe.ipv6 must be 0 or 1")
+
+			vlan = trim(option_value(idx, "vlan"))
+			if (vlan == "" || !vlans[vlan])
+				add_error("reference.pppoe.vlan", name, "vlan", "pppoe.vlan must reference an existing vlan section")
+			healthcheck = trim(option_value(idx, "healthcheck"))
+			if (healthcheck == "" || !healthchecks[healthcheck])
+				add_error("reference.pppoe.healthcheck", name, "healthcheck", "pppoe.healthcheck must reference an existing healthcheck section")
+		}
+		else if (type == "lan") {
+			if (has_option(idx, "ipv4_address") || has_option(idx, "ipv4_netmask"))
+				add_error("lan.ipv4_legacy.unsupported", name, "ipv4_cidr", "use only lan.ipv4_cidr; legacy IPv4 fields are unsupported")
+			if (!valid_ipv4_cidr(option_value(idx, "ipv4_cidr")))
+				add_error("lan.ipv4_cidr.invalid", name, "ipv4_cidr", "lan.ipv4_cidr must be a valid IPv4 interface and prefix length")
+			if (!valid_ula_prefix(option_value(idx, "ula_prefix")))
+				add_error("lan.ula_prefix.invalid", name, "ula_prefix", "lan.ula_prefix must be a valid RFC 4193 prefix inside fc00::/7")
+		}
+		else if (type == "pool") {
+			member_count = list_counts[idx SUBSEP "member"] + 0
+			if (!member_count)
+				add_error("pool.members.required", name, "member", "pool must contain at least one member")
+			for (member_index = 1; member_index <= member_count; member_index++) {
+				member = list_values[idx SUBSEP "member" SUBSEP member_index]
+				if (!wan_ids[member])
+					add_error("reference.pool.member", name, "member", "pool.member must reference an existing pppoe wan_id")
+			}
+		}
+		else if (type == "policy") {
+			pool = trim(option_value(idx, "pool"))
+			if (pool == "" || !pools[pool])
+				add_error("reference.policy.pool", name, "pool", "policy.pool must reference an existing pool section")
+		}
+	}
+
+	if (output_mode == "redacted") {
+		for (line_number = 1; line_number <= NR; line_number++)
+			print redacted_line[line_number]
+	}
+	else if (output_mode == "json") {
+		printf "{\n"
+		printf "  \"valid\": %s,\n", error_count ? "false" : "true"
+		printf "  \"counts\": {\"device\": %d, \"vlan\": %d, \"pppoe\": %d, \"pool\": %d, \"policy\": %d},\n", type_counts["device"] + 0, type_counts["vlan"] + 0, type_counts["pppoe"] + 0, type_counts["pool"] + 0, type_counts["policy"] + 0
+		printf "  \"errors\": ["
+		for (error_index = 1; error_index <= error_count; error_index++) {
+			if (error_index > 1)
+				printf ","
+			printf "\n    {\"code\": \"%s\", \"section\": \"%s\", \"option\": \"%s\", \"message\": \"%s\"}", json_escape(error_code[error_index]), json_escape(error_section[error_index]), json_escape(error_option[error_index]), json_escape(error_message[error_index])
+		}
+		if (error_count)
+			printf "\n  "
+		printf "]\n}\n"
+	}
+	else if (error_count) {
+		for (error_index = 1; error_index <= error_count; error_index++)
+			printf "%s: %s.%s: %s\n", error_code[error_index], error_section[error_index], error_option[error_index], error_message[error_index]
+	}
+	else {
+		print "LineHub UCI configuration is valid."
+	}
+
+	exit error_count ? 1 : 0
+}
+' "$config"

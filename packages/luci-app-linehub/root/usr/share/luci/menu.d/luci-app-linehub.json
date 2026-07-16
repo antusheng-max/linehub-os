@@ -1,0 +1,15 @@
+{
+  "admin/network/linehub": {
+    "title": "LineHub",
+    "order": 60,
+    "action": {
+      "type": "view",
+      "path": "linehub/overview"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-linehub"
+      ]
+    }
+  }
+}

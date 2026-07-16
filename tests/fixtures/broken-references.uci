@@ -1,0 +1,20 @@
+config vlan 'wan_vlan_missing_device'
+	option device 'missing_device'
+	option vid '101'
+	option ifname 'eth0.101'
+
+config pppoe 'wan_broken_refs'
+	option wan_id 'wan-broken-refs'
+	option vlan 'missing_vlan'
+	option username 'fixture@example.invalid'
+	option macaddr '02:00:00:00:02:05'
+	option ipv4 '1'
+	option ipv6 '1'
+	option weight '1'
+	option healthcheck 'missing_healthcheck'
+
+config pool 'broken_pool'
+	list member 'missing-wan'
+
+config policy 'broken_policy'
+	option pool 'missing_pool'

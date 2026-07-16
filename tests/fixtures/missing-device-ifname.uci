@@ -1,0 +1,2 @@
+config device 'eth0'
+	option role 'wan_parent'

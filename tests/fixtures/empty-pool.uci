@@ -1,0 +1,2 @@
+config pool 'empty'
+	option algorithm 'weighted_flow'

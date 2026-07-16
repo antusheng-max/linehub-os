@@ -1,0 +1,17 @@
+* text=auto
+
+.gitattributes text eol=lf
+*.sh text eol=lf
+*.awk text eol=lf
+*.uc text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.uci text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+Makefile text eol=lf
+**/Makefile text eol=lf
+packages/**/files/etc/config/* text eol=lf
+packages/**/files/etc/init.d/* text eol=lf
+packages/**/files/usr/sbin/* text eol=lf
+packages/**/root/usr/share/rpcd/ucode/* text eol=lf

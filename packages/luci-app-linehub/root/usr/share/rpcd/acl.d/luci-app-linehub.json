@@ -1,0 +1,13 @@
+{
+  "luci-app-linehub": {
+    "description": "Grant read-only access to the LineHub configuration validator",
+    "read": {
+      "ubus": {
+        "linehub": [
+          "overview",
+          "validate"
+        ]
+      }
+    }
+  }
+}

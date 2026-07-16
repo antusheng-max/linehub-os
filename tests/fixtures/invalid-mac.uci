@@ -1,0 +1,7 @@
+config pppoe 'wan_invalid_mac'
+	option wan_id 'wan-invalid-mac'
+	option username 'fixture@example.invalid'
+	option macaddr '02:00:00:GG:02:04'
+	option ipv4 '1'
+	option ipv6 '1'
+	option weight '1'

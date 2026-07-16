@@ -1,0 +1,13 @@
+config pppoe 'wan_one'
+	option wan_id 'wan-duplicate'
+	option username 'fixture-one@example.invalid'
+	option ipv4 '1'
+	option ipv6 '1'
+	option weight '1'
+
+config pppoe 'wan_two'
+	option wan_id 'wan-duplicate'
+	option username 'fixture-two@example.invalid'
+	option ipv4 '1'
+	option ipv6 '1'
+	option weight '1'

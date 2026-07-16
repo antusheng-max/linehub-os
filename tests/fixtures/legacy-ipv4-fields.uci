@@ -1,0 +1,4 @@
+config lan 'main'
+	option ipv4_address '192.0.2.1'
+	option ipv4_netmask '255.255.255.0'
+	option ula_prefix 'fd42:4c69:6e65::/48'

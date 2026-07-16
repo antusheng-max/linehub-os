@@ -1,0 +1,6 @@
+config device 'eth0'
+	option ifname 'eth0'
+
+config vlan 'wan_vlan_101'
+	option device 'eth0'
+	option vid '101'
