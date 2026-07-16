@@ -1,0 +1,122 @@
+#!/bin/sh
+# Offline UCI-text validator for LineHub. It parses a supplied file only and
+# does not invoke UCI, ubus, pppd, nftables, or any network configuration tool.
+set -eu
+
+usage() {
+	printf '%s\n' 'Usage: linehub-validate <uci-config-file>' >&2
+	exit 64
+}
+
+[ "$#" -eq 1 ] || usage
+[ -r "$1" ] || { printf 'linehub-validate: cannot read configuration\n' >&2; exit 66; }
+
+awk '
+function fail(section, field, message) {
+	printf "ERROR section=%s field=%s: %s\n", section, field, message > "/dev/stderr"
+	errors++
+}
+function trim(value) {
+	sub(/^[ \t]+/, "", value); sub(/[ \t]+$/, "", value); return value
+}
+function unquote(value) {
+	value = trim(value)
+	if ((value ~ /^\047.*\047$/) || (value ~ /^".*"$/)) return substr(value, 2, length(value) - 2)
+	return value
+}
+function present(value) { return value != "" }
+function integer(value) { return value ~ /^[0-9]+$/ }
+function valid_ipv4_cidr(value,   a,n,i,p) {
+	n = split(value, a, "/"); if (n != 2 || !integer(a[2]) || (a[2] + 0) > 32) return 0
+	n = split(a[1], p, "."); if (n != 4) return 0
+	for (i = 1; i <= 4; i++) if (!integer(p[i]) || (p[i] + 0) > 255) return 0
+	return 1
+}
+function valid_ula(value,   a,n) {
+	n = split(value, a, "/"); if (n != 2 || !integer(a[2]) || (a[2] + 0) > 128) return 0
+	return a[1] ~ /^[fF][cCdD][0-9A-Fa-f:]*$/ && a[1] ~ /:/
+}
+function hex_value(char) {
+	char = tolower(char)
+	return index("0123456789abcdef", char) - 1
+}
+function mac_octet(value) { return 16 * hex_value(substr(value, 1, 1)) + hex_value(substr(value, 2, 1)) }
+function valid_mac(value) { return value ~ /^[0-9A-Fa-f][0-9A-Fa-f](:[0-9A-Fa-f][0-9A-Fa-f]){5}$/ }
+function add_unique(kind, value, section, field,   key) {
+	if (!present(value)) return
+	key = kind SUBSEP value
+	if (seen[key]++) fail(section, field, "duplicate " kind)
+}
+function type_known(value) { return value == "global" || value == "device" || value == "vlan" || value == "pppoe" || value == "lan" || value == "pool" || value == "healthcheck" || value == "policy" }
+function check_toggle(section, field, value) {
+	if (value != "0" && value != "1") fail(section, field, "must be independently set to 0 or 1")
+}
+/^[ \t]*(#|$)/ { next }
+/^[ \t]*config[ \t]+/ {
+	line = $0; sub(/^[ \t]*config[ \t]+/, "", line); n = split(line, part, /[ \t]+/)
+	type = unquote(part[1]); name = unquote(part[2]); current = name
+	if (!type_known(type)) fail(name == "" ? "<unnamed>" : name, "type", "unknown section type " type)
+	if (!present(name)) fail("<unnamed>", "name", "named sections are required")
+	if (section_seen[name]++) fail(name, "name", "duplicate section name")
+	section_type[name] = type; sections[++count] = name
+	next
+}
+/^[ \t]*(option|list)[ \t]+/ {
+	if (!present(current)) { fail("<none>", "syntax", "option outside section"); next }
+	line = $0; sub(/^[ \t]*(option|list)[ \t]+/, "", line); n = split(line, part, /[ \t]+/)
+	key = unquote(part[1]); value = unquote(substr(line, length(part[1]) + 1))
+	if ($0 ~ /^[ \t]*list[ \t]+/) values[current SUBSEP key] = values[current SUBSEP key] "\034" value
+	else values[current SUBSEP key] = value
+	next
+}
+{ fail(present(current) ? current : "<none>", "syntax", "unrecognized UCI line") }
+END {
+	for (i = 1; i <= count; i++) {
+		s = sections[i]; t = section_type[s]
+		if (t == "device") add_unique("interface name", values[s SUBSEP "ifname"], s, "ifname")
+		if (t == "vlan") {
+			v = values[s SUBSEP "vid"]
+			if (!integer(v) || (v + 0) < 1 || (v + 0) > 4094) fail(s, "vid", "must be an integer from 1 to 4094")
+			add_unique("interface name", values[s SUBSEP "ifname"], s, "ifname")
+			add_unique("VLAN subinterface", values[s SUBSEP "device"] SUBSEP v, s, "vid")
+		}
+		if (t == "pppoe") {
+			add_unique("wan_id", values[s SUBSEP "wan_id"], s, "wan_id")
+			m = values[s SUBSEP "macaddr"]
+			if (!valid_mac(m)) fail(s, "macaddr", "invalid MAC address")
+			else {
+				add_unique("MAC", tolower(m), s, "macaddr")
+				if (values[s SUBSEP "mac_mode"] == "generated" && ((mac_octet(substr(m, 1, 2)) % 2) || (int(mac_octet(substr(m, 1, 2)) / 2) % 2 != 1))) fail(s, "macaddr", "generated MAC must be locally administered unicast")
+			}
+			w = values[s SUBSEP "weight"]
+			if (!integer(w) || (w + 0) < 1 || (w + 0) > 1000) fail(s, "weight", "must be an integer from 1 to 1000")
+			check_toggle(s, "ipv4", values[s SUBSEP "ipv4"])
+			check_toggle(s, "ipv6", values[s SUBSEP "ipv6"])
+		}
+		if (t == "policy") add_unique("policy identifier", s, s, "name")
+		if (t == "lan") {
+			if (!valid_ipv4_cidr(values[s SUBSEP "ipv4_cidr"])) fail(s, "ipv4_cidr", "invalid IPv4 CIDR")
+			if (!valid_ula(values[s SUBSEP "ula_prefix"])) fail(s, "ula_prefix", "must be an RFC 4193 ULA IPv6 prefix")
+		}
+	}
+	for (i = 1; i <= count; i++) {
+		s = sections[i]; t = section_type[s]
+		if (t == "vlan" && !(values[s SUBSEP "device"] in section_type && section_type[values[s SUBSEP "device"]] == "device")) fail(s, "device", "referenced physical device does not exist")
+		if (t == "pppoe") {
+			v = values[s SUBSEP "vlan"]; if (!(v in section_type && section_type[v] == "vlan")) fail(s, "vlan", "referenced VLAN does not exist")
+			h = values[s SUBSEP "healthcheck"]; if (!(h in section_type && section_type[h] == "healthcheck")) fail(s, "healthcheck", "referenced healthcheck does not exist")
+		}
+		if (t == "pool") {
+			n = split(values[s SUBSEP "member"], members, "\034"); for (j = 1; j <= n; j++) if (present(members[j]) && !wan_exists(members[j])) fail(s, "member", "referenced WAN does not exist")
+		}
+		if (t == "policy") { p = values[s SUBSEP "pool"]; if (!(p in section_type && section_type[p] == "pool")) fail(s, "pool", "referenced pool does not exist") }
+		if (t == "healthcheck" && present(values[s SUBSEP "wan"]) && !wan_exists(values[s SUBSEP "wan"])) fail(s, "wan", "referenced WAN does not exist")
+	}
+	if (errors) exit 1
+	print "linehub-validate: configuration valid (password=<redacted>)"
+}
+function wan_exists(id,   k) {
+	for (k = 1; k <= count; k++) if (section_type[sections[k]] == "pppoe" && values[sections[k] SUBSEP "wan_id"] == id) return 1
+	return 0
+}
+' "$1"

@@ -1,0 +1,10 @@
+{
+  "luci-app-linehub-status": {
+    "description": "Read simulated LineHub status",
+    "read": {
+      "ubus": {
+        "linehub": [ "status" ]
+      }
+    }
+  }
+}

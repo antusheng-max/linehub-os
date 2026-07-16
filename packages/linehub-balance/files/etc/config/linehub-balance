@@ -1,0 +1,3 @@
+# linehub-balance configuration boundary; generated/runtime settings are intentionally absent in M0.
+config linehub-balance 'main'
+	option enabled '0'

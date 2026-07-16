@@ -1,0 +1,37 @@
+# OpenWrt/ImageBuilder downloads, caches, worktrees, and output
+build/
+bin/
+build_dir/
+staging_dir/
+tmp/
+dl/
+feeds/
+*.ipk
+*.img
+*.img.gz
+*.iso
+*.qcow2
+*.vmdk
+*.squashfs
+*.sysupgrade.bin
+*.factory.bin
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+secrets/
+credentials/
+
+# Tooling/editor output
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.coverage
+coverage/

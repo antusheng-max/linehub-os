@@ -1,0 +1,21 @@
+# 测试策略
+
+## 测试层次
+
+- **静态校验：** 检查目录、包 Makefile、Shell/JavaScript 语法、菜单/ACL JSON、文档不包含明显真实秘密。
+- **单元测试：** 使用 fixtures 验证 UCI section、VLAN、权重、MAC、重复项、引用、LAN CIDR/ULA、地址族开关与密码脱敏。
+- **集成测试：** 后续仅在网络命名空间或专用 OpenWrt 虚拟机运行，模拟 netifd/pppd/odhcp6c/ubus/nftables；禁止使用生产线路。
+- **人工验收：** 核对 LuCI 权限、配置回滚、流粘性、失效切换、IPv6 前缀来源以及诊断脱敏。
+
+## 核心验收场景
+
+1. 两个 PPPoE 会话引用同一 VLAN，且分别拥有稳定 WAN ID、MAC、权重和健康状态。
+2. 不同 VLAN 中的会话能加入同一线路池；新流按候选权重选择。
+3. 同一五元组对应的 TCP/UDP 数据包保持同一连接标记和 WAN。
+4. IPv4 健康失败不自动把 IPv6 标为失败，反之亦然。
+5. 多个 IPv6 PD 前缀保留独立来源，界面/文档不产生“合并公网前缀”的描述。
+6. 任何日志、fixture、截图和 API 输出均不含真实机密。
+
+## 执行原则
+
+当前只运行离线检查：`./scripts/validate-skeleton.sh`；该脚本不访问网络，不要求 root，不修改 `/etc/config/network`，也不调用 pppd、nftables、`ip rule` 或 `ip route`。未来集成测试需要显式实验环境开关，并在默认情况下跳过一切真实网络操作。
