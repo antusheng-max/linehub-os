@@ -45,8 +45,7 @@ config pppoe 'wan_alpha'
 
 config lan 'main'
 	option ifname 'br-lan'
-	option ipv4_address '192.0.2.1'
-	option ipv4_netmask '255.255.255.0'
+	option ipv4_cidr '192.0.2.1/24'
 	option ula_prefix 'fd42:4c69:6e65::/48'
 
 config pool 'default'
@@ -69,7 +68,7 @@ config policy 'lan_default'
 	option sticky 'conntrack'
 ```
 
-`password` 是运行时敏感字段，只为阐明 schema 出现在此虚构示例；生产 UI/API 不读取或返回其明文。
+LAN 固定 IPv4 统一使用 `ipv4_cidr`。`password` 是运行时敏感字段，只为阐明 schema 出现在此虚构示例；生产 UI/API 不读取或返回其明文。
 
 ## 阶段 1 实现边界
 

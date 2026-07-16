@@ -21,10 +21,17 @@ jq empty packages/luci-app-linehub/root/usr/share/luci/menu.d/luci-app-linehub.j
 jq empty packages/luci-app-linehub/root/usr/share/rpcd/acl.d/luci-app-linehub.json
 
 tests/unit/test-linehub-validate.sh
+git diff --check
 
 if rg -n --glob '!AGENTS.md' '(BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|AKIA[0-9A-Z]{16})' .; then
   echo 'potential secret material found' >&2
   exit 1
+fi
+
+if command -v ucode >/dev/null 2>&1; then
+  ucode -c packages/luci-app-linehub/root/usr/share/rpcd/ucode/linehub.uc
+else
+  printf '%s\n' 'ucode not installed; syntax verification is deferred to the isolated SDK stage.'
 fi
 
 printf '%s\n' 'LineHub OS offline validation passed.'
