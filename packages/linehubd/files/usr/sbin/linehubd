@@ -1,0 +1,4 @@
+#!/bin/sh
+# Placeholder only. A future daemon will reconcile validated UCI state via ubus.
+echo 'linehubd: control-plane daemon is not implemented in this skeleton' >&2
+exit 0

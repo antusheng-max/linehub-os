@@ -1,0 +1,3 @@
+# linehub-firewall configuration boundary; generated/runtime settings are intentionally absent in M0.
+config linehub-firewall 'main'
+	option enabled '0'
