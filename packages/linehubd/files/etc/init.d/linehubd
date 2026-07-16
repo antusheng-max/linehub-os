@@ -1,0 +1,8 @@
+#!/bin/sh /etc/rc.common
+# Skeleton only: no process or network action is started in M0.
+START=99
+USE_PROCD=1
+
+start_service() {
+	logger -t linehubd 'LineHub daemon skeleton is not implemented yet'
+}

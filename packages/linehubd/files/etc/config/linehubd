@@ -1,0 +1,3 @@
+# linehubd configuration boundary; generated/runtime settings are intentionally absent in M0.
+config linehubd 'main'
+	option enabled '0'
